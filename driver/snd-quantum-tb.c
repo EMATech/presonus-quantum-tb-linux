@@ -169,6 +169,9 @@ struct quantum_chip {
 	dma_addr_t capture_dma_addr;
 	size_t playback_buffer_size;
 	size_t capture_buffer_size;
+
+	/* Model identification */
+	const char *model_name;
 };
 
 /* Per-substream: fake hw pointer so stream runs (timer-driven until we have real IRQ) */
@@ -205,6 +208,32 @@ static const struct snd_pcm_hardware quantum_pcm_hw = {
 	.periods_min = 2,
 	.periods_max = 1024,
 };
+
+/* Initialize model-specific data in the chip structure */
+static void quantum_init_model_data(struct quantum_chip *chip, struct pci_dev *pci)
+{
+	switch (pci->device) {
+		case PCI_DEVICE_ID_QUANTUM:
+			chip->model_name = QUANTUM_NAMELONG;
+			break;
+		case PCI_DEVICE_ID_QUANTUM2:
+			chip->model_name = QUANTUM2_NAMELONG;
+			break;
+		case PCI_DEVICE_ID_QUANTUM4848:
+			chip->model_name = QUANTUM4848_NAMELONG;
+			break;
+		case PCI_DEVICE_ID_QUANTUM2626:
+			chip->model_name = QUANTUM2626_NAMELONG;
+			break;
+		case PCI_DEVICE_ID_QUANTUM_MOBILE:
+			chip->model_name = QUANTUM_MOBILE_NAMELONG;
+			break;
+		default:
+			chip->model_name = QUANTUM_NAMELONG;
+			dev_warn(&pci->dev, "Unknown Quantum device ID 0x%04x, using generic name\n", pci->device);
+			break;
+	}
+}
 
 static void quantum_period_elapsed(struct timer_list *t)
 {
@@ -515,13 +544,11 @@ static int snd_quantum_pcm_new(struct quantum_chip *chip)
 	struct snd_pcm *pcm;
 	int err;
 
-	/* FIXME: display proper name */
-	err = snd_pcm_new(chip->card, "Quantum", 0, 1, 1, &pcm);
+	err = snd_pcm_new(chip->card, chip->model_name, 0, 1, 1, &pcm);
 	if (err < 0)
 		return err;
 	pcm->private_data = chip;
-	/* FIXME: display proper name */
-	strscpy(pcm->name, QUANTUM_NAMELONG, sizeof(pcm->name));
+	strscpy(pcm->name, chip->model_name, sizeof(pcm->name));
 	chip->pcm = pcm;
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &quantum_pcm_ops);
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE, &quantum_pcm_ops);
@@ -688,6 +715,9 @@ static int snd_quantum_create(struct snd_card *card, struct pci_dev *pci)
 	chip->playback_buffer_size = 0;
 	chip->capture_buffer_size = 0;
 
+	/* Initialize model-specific data (name, etc.) */
+	quantum_init_model_data(chip, pci);
+
 	err = pci_enable_device(pci);
 	if (err < 0)
 		return err;
@@ -831,10 +861,9 @@ static int snd_quantum_probe(struct pci_dev *pci, const struct pci_device_id *pc
 		return err;
 
 	strscpy(card->driver, DRV_NAME, sizeof(card->driver));
-	/* FIXME: Show proper name per pci_id */
-	strscpy(card->shortname, QUANTUM_NAMELONG, sizeof(card->shortname));
+	strscpy(card->shortname, chip->model_name, sizeof(card->shortname));
 	snprintf(card->longname, sizeof(card->longname), "%s at 0x%px irq %i",
-		 card->shortname, chip->iobase, chip->pci->irq);
+		 chip->model_name, chip->iobase, chip->pci->irq);
 
 	err = snd_card_register(card);
 	if (err < 0)
