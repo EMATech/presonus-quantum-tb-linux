@@ -258,7 +258,6 @@ static int quantum_pcm_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *hw_params)
 {
 	struct quantum_chip *chip = substream->pcm->private_data;
-	struct snd_pcm_runtime *runtime = substream->runtime;
 
 	/* Store buffer size for later use in prepare() */
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
@@ -473,7 +472,6 @@ static snd_pcm_uframes_t quantum_pcm_pointer(struct snd_pcm_substream *substream
 {
 	struct quantum_chip *chip = substream->pcm->private_data;
 	struct quantum_runtime *qr = substream->runtime->private_data;
-	struct snd_pcm_runtime *runtime = substream->runtime;
 	unsigned long flags;
 	snd_pcm_uframes_t pos = 0;
 	u32 hw_pos;
