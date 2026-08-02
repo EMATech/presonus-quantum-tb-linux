@@ -1,18 +1,20 @@
-# PreSonus Quantum 2626 Linux Driver
+# PreSonus Quantum Thunderbolt Family Linux Driver
 
-Community-developed **Linux ALSA driver** for the **PreSonus Quantum 2626** Thunderbolt 3 audio interface. This open-source driver enables professional audio production on Linux with this high-performance 26×26 I/O interface.
+Community-developed **Linux ALSA driver** for the **PreSonus Quantum Thunderbolt Family** audio interfaces.
+This open-source driver enables professional audio production on Linux with these high-performance interfaces.
 
 ## Overview
 
-Getting the **PreSonus Quantum 2626** Thunderbolt 3 audio interface working on Linux with an out-of-tree ALSA PCI driver. This project provides Linux support for professional audio recording, music production, and low-latency audio processing.
+Getting the **PreSonus Quantum Thunderbolt Family** audio interfaces working on Linux with an out-of-tree ALSA PCIe driver.
+This project provides Linux support for professional audio recording, music production, and low-latency audio processing.
 
 ## Hardware Specifications
 
-- **Product:** PreSonus Quantum 2626 Thunderbolt Audio Interface  
-- **Connection:** Thunderbolt 3 (no USB or PCIe card version)  
+- **Product:** PreSonus Quantum Thunderbolt Family Audio Interface  
+- **Connection:** Thunderbolt 2 or 3 (no USB or PCIe card version)  
 - **Audio Capabilities:** 26 inputs × 26 outputs, 24-bit/192 kHz resolution, <1 ms round-trip latency  
 - **Official Support:** macOS and Windows only (proprietary drivers)  
-- **Linux Support:** Community-developed ALSA driver (PCI ID 1c67:0104)
+- **Linux Support:** Community-developed ALSA driver (PCI ID `1c67:0104`)
 - **Use Cases:** Professional audio recording, music production, live sound, DAW integration, low-latency audio processing
 
 ---
@@ -20,7 +22,7 @@ Getting the **PreSonus Quantum 2626** Thunderbolt 3 audio interface working on L
 ## Development Status
 
 - **Driver Status:** ALSA card detection working, MSI interrupts operational, prepare/trigger functions implemented
-- **Register Programming:** DMA buffer address configuration (0x10300 playback / 0x10304 capture), control registers (0x100)
+- **Register Programming:** DMA buffer address configuration (`0x10300` playback / `0x10304` capture), control registers (`0x100`)
 - **Current Limitation:** Audio output not yet functional - requires additional reverse engineering of Windows driver
 - **Next Steps:** Complete register mapping for buffer size, sample rate configuration, and audio routing
 
@@ -40,13 +42,13 @@ cd driver && make
 sudo make install
 
 # Load the driver
-sudo modprobe snd-quantum2626
+sudo modprobe snd-quantum-tb
 ```
 
 ### Testing Audio Playback
 
 ```bash
-# Check if the Quantum 2626 is detected
+# Check if the Quantum is detected
 cat /proc/asound/cards
 
 # Stop audio services (required for testing)
@@ -61,7 +63,7 @@ systemctl --user start pipewire pipewire-pulse wireplumber
 
 ### Reloading After Changes
 
-**Reload driver (after code changes):** Use `./scripts/reload_quantum_driver.sh` (stops audio, kills processes using card 4, rmmod/insmod, starts audio). If that still says "module in use", log out, switch to TTY2 (Ctrl+Alt+F2), run `sudo rmmod snd_quantum2626 && sudo insmod driver/snd-quantum2626.ko`, then switch back and log in.
+**Reload driver (after code changes):** Use `./scripts/reload_quantum_driver.sh` (stops audio, kills processes using card 4, rmmod/insmod, starts audio). If that still says "module in use", log out, switch to TTY2 (Ctrl+Alt+F2), run `sudo rmmod snd_quantum-tb && sudo insmod driver/snd-quantum-tb.ko`, then switch back and log in.
 
 ---
 
@@ -106,12 +108,12 @@ systemctl --user start pipewire pipewire-pulse wireplumber
    - Buffer size and period size configuration
    - Sample rate programming
    - Stream start/stop control sequences
-   - Confirm existing offsets (0x100, 0x10300/0x10304)
+   - Confirm existing offsets (`0x100`, `0x10300/0x10304`)
    - Document new register discoveries in [notes/REGISTER_GUESSES.md](notes/REGISTER_GUESSES.md)
 
-2. **Driver Implementation:** Update `QUANTUM_REG_*` constants and prepare/trigger functions in `driver/snd-quantum2626.c` with discovered register mappings
+2. **Driver Implementation:** Update `QUANTUM_REG_*` constants and prepare/trigger functions in `driver/snd-quantum-tb.c` with discovered register mappings
 
-3. **Testing and Validation:** Reload driver, test with aplay, verify dmesg output and physical audio output
+3. **Testing and Validation:** Reload driver, test with `aplay`, verify `dmesg` output and physical audio output
 
 ---
 
@@ -126,7 +128,7 @@ systemctl --user start pipewire pipewire-pulse wireplumber
    If it appears as PCIe but has no ALSA device, we know the bus is fine and the gap is a missing audio driver.
 
 2. **Profile on Windows 11 only when reverse-engineering**  
-   Use Windows only when you need to reverse-engineer the device (e.g. to write or adapt a Linux driver). On a Windows 11 machine with the Quantum 2626 working you can capture vendor/device IDs, driver names, and resource usage — see `docs/STAGE2_RUNBOOK.md`. We don’t need Windows for basic diagnosis; Linux already gives us the PCI identity (e.g. 1c67:0104).
+   Use Windows only when you need to reverse-engineer the device (e.g. to write or adapt a Linux driver). On a Windows 11 machine with the Quantum 2626 working you can capture vendor/device IDs, driver names, and resource usage — see `docs/STAGE2_RUNBOOK.md`. We don’t need Windows for basic diagnosis; Linux already gives us the PCI identity (e.g. `1c67:0104`).
 
 3. **Use the profiling output for Linux**  
    - Match the same vendor/device ID on Linux (`lspci -nn`).
@@ -135,17 +137,17 @@ systemctl --user start pipewire pipewire-pulse wireplumber
 - **Stage 1 (Linux):** [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md) — diagnosis plan (done: device 1c67:0104 visible, no driver).
 - **Stage 2 (Windows):** [docs/STAGE2_RUNBOOK.md](docs/STAGE2_RUNBOOK.md) — Profile on Windows 11, fill `notes/windows_profile.txt` for driver work.
 - **Windows driver reference:** [driver-reference/](driver-reference/) — PreSonus Windows driver files (INF + notes) for IDs and reverse engineering; `.sys`/`.cat`/`.PNF` kept locally only.
-- **Linux driver:** [driver/](driver/) — Out-of-tree ALSA PCI driver; card + PCM, Ghidra-derived register programming (buffer 0x10300/0x10304, control 0x100). Build: `make` in `driver/`; load: `sudo modprobe snd-quantum2626` (after `sudo make install`) or `sudo insmod snd-quantum2626.ko`. Real audio: more RE (buffer size, sample rate, control bits).
+- **Linux driver:** [driver/](driver/) — Out-of-tree ALSA PCI driver; card + PCM, Ghidra-derived register programming (buffer `0x10300/0x10304`, control `0x100`). Build: `make` in `driver/`; load: `sudo modprobe snd-quantum-tb` (after `sudo make install`) or `sudo insmod snd-quantum-tb.ko`. Real audio: more RE (buffer size, sample rate, control bits).
 
 ## Repository Layout
 
 ```
-Quantum2626/
+presonus-quantum-tb-linux/
 ├── README.md                     # Main documentation
 ├── driver/                       # Linux ALSA PCI driver
 │   ├── README.md
 │   ├── Makefile
-│   └── snd-quantum2626.c
+│   └── snd-quantum-tb.c
 ├── driver-reference/             # Windows driver reference files
 │   ├── README.md                 # INF summary and driver info
 │   ├── pae_quantum.inf           # Windows setup info (PCI IDs, service, KMDF)

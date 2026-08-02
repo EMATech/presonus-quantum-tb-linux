@@ -1,15 +1,15 @@
 #!/bin/bash
-# Reload snd-quantum2626: stop audio, mask pipewire, kill anything using Quantum card, rmmod, insmod, unmask, start audio.
+# Reload snd-quantum-tb: stop audio, mask pipewire, kill anything using Quantum card, rmmod, insmod, unmask, start audio.
 # Run with: ./scripts/reload_quantum_driver.sh
 # Optional: MODPARAMS="reg_srate_offset=0x108 reg_srate_value=48000" ./scripts/reload_quantum_driver.sh
 # Optional: RELOAD_ONLY=1 ... (do not start pipewire at the end)
 # If rmmod still fails, log out completely, switch to TTY2 (Ctrl+Alt+F2), run:
-#   sudo rmmod snd_quantum2626 && sudo insmod /home/jamie/source/Quantum2626/driver/snd-quantum2626.ko
+#   sudo rmmod snd_quantum_tb && sudo insmod driver/snd-quantum-tb.ko
 # Then switch back (Ctrl+Alt+F1) and log in.
 
 set -e
 DRIVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/driver"
-# Detect Quantum card (module must be loaded); fallback 4 if not found
+# Detect Quantum card (module must be loaded); fallback to card 4 if not found
 CARD=$(cat /proc/asound/cards 2>/dev/null | grep -i quantum | head -1 | awk '{print $1}')
 [ -z "$CARD" ] && CARD=4
 
@@ -57,7 +57,7 @@ for try in $(seq 1 $MAX_TRIES); do
     echo "$still"
     echo ""
     echo "Last resort: log out, switch to TTY2 (Ctrl+Alt+F2), run:"
-    echo "  sudo rmmod snd_quantum2626 && sudo insmod $DRIVER_DIR/snd-quantum2626.ko"
+    echo "  sudo rmmod snd_quantum_tb && sudo insmod $DRIVER_DIR/snd-quantum-tb.ko"
     systemctl --user unmask pipewire.socket pipewire pipewire-pulse wireplumber 2>/dev/null || true
     exit 1
   fi
@@ -72,13 +72,13 @@ if [ -n "$still" ]; then
 fi
 
 echo "Unloading module..."
-sudo rmmod snd_quantum2626
+sudo rmmod snd_quantum_tb
 echo "Loading module..."
 if [ -n "${MODPARAMS:-}" ]; then
   echo "  with params: $MODPARAMS"
-  sudo insmod "$DRIVER_DIR/snd-quantum2626.ko" $MODPARAMS
+  sudo insmod "$DRIVER_DIR/snd-quantum-tb.ko" $MODPARAMS
 else
-  sudo insmod "$DRIVER_DIR/snd-quantum2626.ko"
+  sudo insmod "$DRIVER_DIR/snd-quantum-tb.ko"
 fi
 echo "Unmasking user audio..."
 systemctl --user unmask pipewire.socket pipewire pipewire-pulse wireplumber 2>/dev/null || true

@@ -1,8 +1,8 @@
-# Out-of-tree ALSA PCI driver for PreSonus Quantum 2626 (skeleton)
+# Out-of-tree ALSA PCI driver for PreSonus Quantum Thunderbolt Family (skeleton)
 # Build: make -C /lib/modules/$(uname -r)/build M=$(PWD) modules
-# Load:  sudo insmod snd-quantum2626.ko  (or modprobe after install)
+# Load:  sudo insmod snd-quantum-tb.ko  (or modprobe after install)
 
-obj-m := snd-quantum2626.o
+obj-m := snd-quantum-tb.o
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD := $(shell pwd)

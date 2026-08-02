@@ -1,10 +1,13 @@
 /*
- * ALSA PCI driver skeleton for PreSonus Quantum 2626 (and family)
- * PCI ID 1c67:0104 (Quantum 2626); 0101, 0102, 0103, 0105 from Windows INF.
+ * ALSA PCI driver skeleton for PreSonus Quantum family Thunderbolt audio interfaces
+ * PCI ID 1c67:0101 (Quantum), 0102 (Quantum 2), 0103 (Quantum 4848), 0104 (Quantum 2626) & 0105 (Unreleased Mobile) from Windows INF.
  *
  * Based on: kernel Documentation/sound/kernel-api/writing-an-alsa-driver.rst
  * and sound/pci/ens1370.c structure. No hardware access yet — BAR mapped,
  * card + stub PCM only. Real PCM/IRQ behavior needs reverse engineering.
+ *
+ * SPDX-FileCopyrightText: 2026 Jamie Steele
+ * SPDX-FileCopyrightText: 2026 Raphaël Doursenaud
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -24,16 +27,38 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 
-#define DRV_NAME "snd-quantum2626"
-#define QUANTUM_NAMELONG "PreSonus Quantum 2626"
+#define DRV_NAME                "snd-quantum"
+#define QUANTUM_NAMELONG        "PreSonus Quantum"
+#define QUANTUM2_NAMELONG       "PreSonus Quantum 2"
+#define QUANTUM4848_NAMELONG    "PreSonus Quantum 4848"
+#define QUANTUM2626_NAMELONG    "PreSonus Quantum 2626"
+#define QUANTUM_MOBILE_NAMELONG "Presonus Quantum Mobile" /* Unreleased prototype? */
 
 /* PreSonus PCI vendor ID (from driver-reference/pae_quantum.inf) */
-#define PCI_VENDOR_ID_PRESONUS	0x1c67
-#define PCI_DEVICE_ID_QUANTUM	0x0101
-#define PCI_DEVICE_ID_QUANTUM2	0x0102
-#define PCI_DEVICE_ID_QUANTUM4848	0x0103
-#define PCI_DEVICE_ID_QUANTUM2626	0x0104
+#define PCI_VENDOR_ID_PRESONUS          0x1c67
+#define PCI_DEVICE_ID_QUANTUM       	0x0101
+#define PCI_DEVICE_ID_QUANTUM2	        0x0102
+#define PCI_DEVICE_ID_QUANTUM4848   	0x0103
+#define PCI_DEVICE_ID_QUANTUM2626   	0x0104
 #define PCI_DEVICE_ID_QUANTUM_MOBILE	0x0105
+
+/* TODO:
+ * - [ ] Init Quantum (Blue LED)
+ * - [ ] Read FW version/revision
+ * - [ ] Hardware controls
+ *   - [ ] Power LED
+ *   - [ ] Set sample rate
+ *   - [ ] Set sync source (Internal/WordClock/SPDIF/ADAT)
+ *   - [ ] Gain (Per channel)
+ *   - [ ] 48V enable/disable (Per channel)
+ *   - [ ] Talkback (Quantum only)
+ *   - [ ] A/B (Quantum 2 only)
+ * - [ ] Per model (and per sample rate?) channel counts
+ * - [ ] Per model (and per sample rate?) channel maps
+ * - [ ] MIDI
+ * - [ ] Meters
+ * - [ ] Multiple cards aggregation (Up to 4?)
+ */
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
@@ -109,9 +134,9 @@ static int init_control_value = -1;
 module_param(init_control_value, int, 0644);
 MODULE_PARM_DESC(init_control_value, "Init CONTROL 0x100 value (hex). -1 = 0x8. Try 0x88, 0x10 if LED blinks.");
 
-MODULE_AUTHOR("Quantum2626 Linux driver project");
+MODULE_AUTHOR("Quantum Thunderbolt Family Linux Driver Project");
+MODULE_DESCRIPTION("PreSonus Quantum Thunderbolt Family ALSA (PCIe) driver (skeleton)");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("PreSonus Quantum 2626 (and family) ALSA PCI driver (skeleton)");
 
 /*
  * Register map from notes/GHIDRA_FINDINGS_SUMMARY.md and REGISTER_GUESSES.md.
@@ -138,7 +163,7 @@ struct quantum_chip {
 	struct snd_pcm *pcm;
 	struct snd_pcm_substream *playback_substream;
 	struct snd_pcm_substream *capture_substream;
-	
+
 	/* Hardware state */
 	dma_addr_t playback_dma_addr;
 	dma_addr_t capture_dma_addr;
@@ -158,16 +183,22 @@ struct quantum_runtime {
 /* ----- PCM ops: timer-driven fake pointer so aplay/arecord can run ----- */
 
 static const struct snd_pcm_hardware quantum_pcm_hw = {
-	.info = SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_INTERLEAVED |
-		SNDRV_PCM_INFO_BLOCK_TRANSFER | SNDRV_PCM_INFO_MMAP_VALID,
+	.info = (SNDRV_PCM_INFO_BLOCK_TRANSFER |
+             SNDRV_PCM_INFO_INTERLEAVED |
+	         SNDRV_PCM_INFO_MMAP |
+			 SNDRV_PCM_INFO_MMAP_VALID),
+	 /* FIXME: should be 24 or 32 bits */
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |
-		 SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000 |
-		 SNDRV_PCM_RATE_176400 | SNDRV_PCM_RATE_192000,
+	.rates = (SNDRV_PCM_RATE_44100 |
+	          SNDRV_PCM_RATE_48000 |
+		      SNDRV_PCM_RATE_88200 |
+			  SNDRV_PCM_RATE_96000 |
+		      SNDRV_PCM_RATE_176400 |
+			  SNDRV_PCM_RATE_192000),
 	.rate_min = 44100,
 	.rate_max = 192000,
-	.channels_min = 2,
-	.channels_max = 2,
+	.channels_min = 2, /* FIXME: to determine */
+	.channels_max = 2, /* FIXME: 48? */
 	.buffer_bytes_max = 256 * 1024,
 	.period_bytes_min = 256,
 	.period_bytes_max = 256 * 1024,
@@ -228,13 +259,13 @@ static int quantum_pcm_hw_params(struct snd_pcm_substream *substream,
 {
 	struct quantum_chip *chip = substream->pcm->private_data;
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	
+
 	/* Store buffer size for later use in prepare() */
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		chip->playback_buffer_size = params_buffer_bytes(hw_params);
 	else
 		chip->capture_buffer_size = params_buffer_bytes(hw_params);
-	
+
 	return 0;
 }
 
@@ -276,41 +307,41 @@ static int quantum_pcm_prepare(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		/* Write buffer address (lower 32 bits) */
 		writel((u32)(dma_addr & 0xffffffff), chip->iobase + QUANTUM_REG_BUFFER0);
-		dev_info(&chip->pci->dev, "prepare playback: dma_addr=0x%llx buffer_size=%zu -> 0x%x\n",
+		dev_info(&chip->pci->dev, "Prepare playback: dma_addr=0x%llx buffer_size=%zu -> 0x%x\n",
 			 (unsigned long long)dma_addr, buffer_size, (u32)(dma_addr & 0xffffffff));
 		/* Note: May need upper 32 bits or buffer size register */
 	} else {
 		/* Capture buffer */
 		writel((u32)(dma_addr & 0xffffffff), chip->iobase + QUANTUM_REG_BUFFER1);
-		dev_info(&chip->pci->dev, "prepare capture: dma_addr=0x%llx buffer_size=%zu -> 0x%x\n",
+		dev_info(&chip->pci->dev, "Prepare capture: dma_addr=0x%llx buffer_size=%zu -> 0x%x\n",
 			 (unsigned long long)dma_addr, buffer_size, (u32)(dma_addr & 0xffffffff));
 	}
 
 	/* Read initial status registers (from Ghidra: reads 0x0, 0x4, 0x8, 0x10, 0x14, 0x104) */
 	val = readl(chip->iobase + QUANTUM_REG_VERSION);
 	dev_dbg(&chip->pci->dev, "Version reg (0x%04x): 0x%08x\n", QUANTUM_REG_VERSION, val);
-	
+
 	val = readl(chip->iobase + QUANTUM_REG_STATUS1);
 	dev_dbg(&chip->pci->dev, "Status1 (0x%04x): 0x%08x\n", QUANTUM_REG_STATUS1, val);
-	
+
 	val = readl(chip->iobase + QUANTUM_REG_STATUS5);
 	dev_dbg(&chip->pci->dev, "Status5 (0x%04x): 0x%08x\n", QUANTUM_REG_STATUS5, val);
 
 	/* Optional: stream-start path writes to 0x8 and 0x10 (trace value unknown) */
 	if (reg_status2_value >= 0) {
 		writel((u32)reg_status2_value, chip->iobase + QUANTUM_REG_STATUS2);
-		dev_info(&chip->pci->dev, "prepare: STATUS2 0x8 = 0x%x\n", (u32)reg_status2_value);
+		dev_info(&chip->pci->dev, "Prepare: STATUS2 0x8 = 0x%x\n", (u32)reg_status2_value);
 	}
 	if (reg_status3_value >= 0) {
 		writel((u32)reg_status3_value, chip->iobase + QUANTUM_REG_STATUS3);
-		dev_info(&chip->pci->dev, "prepare: STATUS3 0x10 = 0x%x\n", (u32)reg_status3_value);
+		dev_info(&chip->pci->dev, "Prepare: STATUS3 0x10 = 0x%x\n", (u32)reg_status3_value);
 	}
 
 	/* Write control register (from Ghidra: 0x100 = 0x8; overridable via control_value) */
 	{
 		u32 ctrl = (control_value >= 0) ? (u32)control_value : 0x8u;
 		writel(ctrl, chip->iobase + QUANTUM_REG_CONTROL);
-		dev_info(&chip->pci->dev, "prepare: CONTROL 0x100 = 0x%x (rate=%u format=%u)\n",
+		dev_info(&chip->pci->dev, "Prepare: CONTROL 0x100 = 0x%x (rate=%u format=%u)\n",
 			 ctrl, runtime->rate, (unsigned int)snd_pcm_format_width(runtime->format));
 	}
 
@@ -318,18 +349,18 @@ static int quantum_pcm_prepare(struct snd_pcm_substream *substream)
 	if (reg_srate_offset >= 0) {
 		u32 srate = (reg_srate_value >= 0) ? (u32)reg_srate_value : (u32)runtime->rate;
 		writel(srate, chip->iobase + reg_srate_offset);
-		dev_info(&chip->pci->dev, "prepare: sample rate reg 0x%x = %u\n",
+		dev_info(&chip->pci->dev, "Prepare: sample rate reg 0x%x = %u\n",
 			 reg_srate_offset, srate);
 	}
 	if (reg_bufsize_offset >= 0) {
 		writel((u32)buffer_size, chip->iobase + reg_bufsize_offset);
-		dev_info(&chip->pci->dev, "prepare: buffer size reg 0x%x = %zu\n",
+		dev_info(&chip->pci->dev, "Prepare: buffer size reg 0x%x = %zu\n",
 			 reg_bufsize_offset, buffer_size);
 	}
 	if (reg_fmt_offset >= 0) {
 		u32 fmt = (reg_fmt_value >= 0) ? (u32)reg_fmt_value : (u32)snd_pcm_format_width(runtime->format);
 		writel(fmt, chip->iobase + reg_fmt_offset);
-		dev_info(&chip->pci->dev, "prepare: format reg 0x%x = %u\n",
+		dev_info(&chip->pci->dev, "Prepare: format reg 0x%x = %u\n",
 			 reg_fmt_offset, fmt);
 	}
 
@@ -370,7 +401,7 @@ static int quantum_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 			u32 ctrl = (control_value >= 0) ? (u32)control_value : 0x8u;
 			control_val = readl(chip->iobase + QUANTUM_REG_CONTROL);
 			writel(ctrl, chip->iobase + QUANTUM_REG_CONTROL);
-			dev_info(&chip->pci->dev, "trigger START %s: CONTROL 0x100 was 0x%x now 0x%x\n",
+			dev_info(&chip->pci->dev, "Trigger START %s: CONTROL 0x100 was 0x%x now 0x%x\n",
 				 substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "playback" : "capture",
 				 control_val, ctrl);
 		}
@@ -403,7 +434,7 @@ static int quantum_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		/* Stop hardware stream */
 		control_val = readl(chip->iobase + QUANTUM_REG_CONTROL);
 		writel(0x0, chip->iobase + QUANTUM_REG_CONTROL);
-		dev_info(&chip->pci->dev, "trigger STOP %s: CONTROL 0x100 was 0x%x now 0x0\n",
+		dev_info(&chip->pci->dev, "Trigger STOP %s: CONTROL 0x100 was 0x%x now 0x0\n",
 			 substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "playback" : "capture",
 			 control_val);
 
@@ -456,7 +487,7 @@ static snd_pcm_uframes_t quantum_pcm_pointer(struct snd_pcm_substream *substream
 		/* Read status register that might contain position */
 		/* This is a guess - actual position register needs experimentation */
 		hw_pos = readl(chip->iobase + QUANTUM_REG_STATUS5);
-		
+
 		/* If hardware position is available, use it */
 		/* For now, fall back to software position */
 		spin_lock_irqsave(&qr->lock, flags);
@@ -486,10 +517,12 @@ static int snd_quantum_pcm_new(struct quantum_chip *chip)
 	struct snd_pcm *pcm;
 	int err;
 
-	err = snd_pcm_new(chip->card, "Quantum2626", 0, 1, 1, &pcm);
+	/* FIXME: display proper name */
+	err = snd_pcm_new(chip->card, "Quantum", 0, 1, 1, &pcm);
 	if (err < 0)
 		return err;
 	pcm->private_data = chip;
+	/* FIXME: display proper name */
 	strscpy(pcm->name, QUANTUM_NAMELONG, sizeof(pcm->name));
 	chip->pcm = pcm;
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &quantum_pcm_ops);
@@ -533,7 +566,7 @@ static irqreturn_t snd_quantum_interrupt(int irq, void *dev_id)
 	/* Based on Ghidra: status registers at 0x4, 0x8, 0x10, 0x14, 0x104 */
 	/* Check which one is the interrupt status (needs experimentation) */
 	status = readl(chip->iobase + QUANTUM_REG_STATUS1);
-	
+
 	/* If no interrupt pending, return */
 	/* For now, assume any non-zero status means interrupt */
 	if (status == 0)
@@ -606,11 +639,16 @@ static void quantum_device_init(struct quantum_chip *chip)
 		return;
 
 	/* Same register reads as Windows init (FUN_140003d60) */
-	dev_info(&pci->dev, "Init: Version 0x00=0x%08x Status1 0x04=0x%08x Status2 0x08=0x%08x\n",
+	dev_info(&pci->dev, "Read Init:\n"
+					 "\tVersion 0x00=0x%08x\n"
+					 "\tStatus1 0x04=0x%08x\n"
+					 "\tStatus2 0x08=0x%08x\n"
+					 "\tStatus3 0x10=0x%08x\n"
+					 "\tStatus4 0x14=0x%08x\n"
+					 "\tStatus5 0x104=0x%08x\n",
 		 readl(iobase + QUANTUM_REG_VERSION),
 		 readl(iobase + QUANTUM_REG_STATUS1),
-		 readl(iobase + QUANTUM_REG_STATUS2));
-	dev_info(&pci->dev, "Init: Status3 0x10=0x%08x Status4 0x14=0x%08x Status5 0x104=0x%08x\n",
+		 readl(iobase + QUANTUM_REG_STATUS2),
 		 readl(iobase + QUANTUM_REG_STATUS3),
 		 readl(iobase + QUANTUM_REG_STATUS4),
 		 readl(iobase + QUANTUM_REG_STATUS5));
@@ -626,7 +664,7 @@ static void quantum_device_init(struct quantum_chip *chip)
 		if (off == QUANTUM_REG_CONTROL && init_control_value >= 0)
 			val = (u32)init_control_value;
 		writel(val, iobase + off);
-		dev_info(&pci->dev, "Init: 0x%x = 0x%x\n", off, val);
+		dev_info(&pci->dev, "Write Init: 0x%x = 0x%x\n", off, val);
 	}
 	/* Give hardware time to settle (some interfaces need this for LED/ready) */
 	msleep(20);
@@ -795,6 +833,7 @@ static int snd_quantum_probe(struct pci_dev *pci, const struct pci_device_id *pc
 		return err;
 
 	strscpy(card->driver, DRV_NAME, sizeof(card->driver));
+	/* FIXME: Show proper name per pci_id */
 	strscpy(card->shortname, QUANTUM_NAMELONG, sizeof(card->shortname));
 	snprintf(card->longname, sizeof(card->longname), "%s at 0x%px irq %i",
 		 card->shortname, chip->iobase, chip->pci->irq);

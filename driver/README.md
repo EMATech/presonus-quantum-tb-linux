@@ -1,6 +1,6 @@
-# PreSonus Quantum 2626 — Linux driver (skeleton)
+# PreSonus Quantum Thunderbolt Family — Linux driver (skeleton)
 
-Out-of-tree ALSA PCI driver skeleton for PreSonus Quantum 2626 (and family: 0101, 0102, 0103, 0105 from `driver-reference/pae_quantum.inf`). The card is registered and a PCM device appears. **IRQ path is wired:** the driver requests the device IRQ and calls `snd_pcm_period_elapsed()` from the interrupt handler for active playback/capture; if IRQ request fails, a timer fallback drives the pointer. **No actual hardware I/O yet** — no DMA or register programming; real playback/capture needs reverse engineering of `pae_quantum.sys` or the device BAR.
+Out-of-tree ALSA PCI driver skeleton for PreSonus Quantum Thunderbolt Family (PCI device IDs `0101`, `0102`, `0103`, `0105` from `driver-reference/pae_quantum.inf`). The card is registered and a PCM device appears. **IRQ path is wired:** the driver requests the device IRQ and calls `snd_pcm_period_elapsed()` from the interrupt handler for active playback/capture; if IRQ request fails, a timer fallback drives the pointer. **No actual hardware I/O yet** — no DMA or register programming; real playback/capture needs reverse engineering of `pae_quantum.sys` or the device BAR.
 
 ## Base / references
 
@@ -10,8 +10,8 @@ Out-of-tree ALSA PCI driver skeleton for PreSonus Quantum 2626 (and family: 0101
 
 ## What this driver does
 
-- **PCI:** Claims 1c67:0101, 0102, 0103, 0104, 0105.
-- **Probe:** Enables device, requests regions, maps BAR 0 with `pci_iomap`, logs the first 64 bytes of BAR 0 (MMIO+0x00..0x3c) to dmesg for reverse-engineering, tries MSI first (Thunderbolt often has legacy IRQ 0), then requests the device IRQ when valid (>0) with a shared handler that signals period elapsed for active substreams, creates ALSA card + one PCM (playback + capture), registers card.
+- **PCI:** Claims `1c67:0101`, `0102`, `0103`, `0104`, `0105`.
+- **Probe:** Enables device, requests regions, maps BAR 0 with `pci_iomap`, logs the first `64` bytes of `BAR 0` (`MMIO+0x00..0x3c`) to dmesg for reverse-engineering, tries MSI first (Thunderbolt often has legacy `IRQ 0`), then requests the device IRQ when valid (>0) with a shared handler that signals period elapsed for active substreams, creates ALSA card + one PCM (playback + capture), registers card.
 - **Remove / free:** Frees IRQ (if requested), frees MSI vectors (if allocated), unmaps BAR, releases regions, disables PCI.
 - **PCM:** Open/close/hw_params/hw_free/prepare/trigger/pointer; hardware descriptor allows common rates/channels so the device shows in `aplay -l` / `arecord -l`. Pointer is driven by IRQ (or timer fallback). No data is moved to/from hardware yet.
 
@@ -20,19 +20,19 @@ Out-of-tree ALSA PCI driver skeleton for PreSonus Quantum 2626 (and family: 0101
 ```bash
 cd driver
 make
-sudo insmod snd-quantum2626.ko
+sudo insmod snd-quantum-tb.ko
 ```
 
 Or install and load via modprobe:
 
 ```bash
 make install
-sudo modprobe snd-quantum2626
+sudo modprobe snd-quantum-tb
 ```
 
 **For testing with debug output:**
 ```bash
-sudo insmod snd-quantum2626.ko dump_on_trigger=1
+sudo insmod snd-quantum-tb.ko dump_on_trigger=1
 ```
 
 **Quick status check:**
@@ -51,7 +51,7 @@ cat /proc/asound/cards
 Unload:
 
 ```bash
-sudo rmmod snd-quantum2626
+sudo rmmod snd-quantum-tb
 ```
 
 ### Optional: dump MMIO at prepare/trigger (for reverse-engineering)
@@ -59,7 +59,7 @@ sudo rmmod snd-quantum2626
 Load with `dump_on_trigger=1` to log the first 64 bytes of BAR 0 at each `prepare` and `trigger START/STOP`:
 
 ```bash
-sudo modprobe snd-quantum2626 dump_on_trigger=1
+sudo modprobe snd-quantum-tb dump_on_trigger=1
 ```
 
 Then run `aplay` or `arecord`; `dmesg` will show "MMIO at prepare", "MMIO at trigger START", "MMIO at trigger STOP". Compare with baseline (see `docs/REVERSE_ENGINEERING_PLAN.md` and `scripts/probe_during_playback.sh`).
@@ -72,6 +72,6 @@ Then run `aplay` or `arecord`; `dmesg` will show "MMIO at prepare", "MMIO at tri
 
 ## Layout
 
-- `snd-quantum2626.c` — Single-file driver (PCI table, probe/remove, chip, stub PCM).
+- `snd-quantum-tb` — Single-file driver (PCI table, probe/remove, chip, stub PCM).
 - `Makefile` — Out-of-tree kernel build.
 - `README.md` — This file.
